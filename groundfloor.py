@@ -39,7 +39,6 @@ class GoundFloor():
 
             if len(loans) % 10 == 0:
                 print("%d of %d loan crawled" % (len(loans), len(cards)))
-                break
         
         print("%d of %d loan crawled, %d failed" % (len(loans), len(cards), count_err))
         
