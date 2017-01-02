@@ -1,5 +1,6 @@
 import datetime as dt
 from re import sub
+import numpy as np
 
 def parse_currency(string):
     """Preprocess string and get currency number
@@ -16,14 +17,11 @@ def parse_date(string):
     >>> parse_date('08/22/2017')
     datetime.datetime(2017, 8, 22, 0, 0)
     """
-    if string == 'Pending':
-        date = dt.datetime(9999,1,1)
-    else:
-        try:
-            date = dt.datetime.strptime(string, '%m/%d/%Y')
-        except:
-            print("Error in parse_date(%s)" % (string))
-            date = dt.datetime(1999,1,1)
+    try:
+        date = dt.datetime.strptime(string, '%m/%d/%Y')
+    except:
+        date = 'NA'
+
     return date
 
 
