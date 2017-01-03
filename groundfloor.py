@@ -4,6 +4,7 @@ from urllib.request import urlopen
 from urllib import parse
 import pandas as pd
 import datetime as dt
+import re
 
 from utils import *
 
@@ -71,6 +72,16 @@ class GoundFloor():
             zipcode = 'NA'
             state = address_array[-1]
 
+
+        date_of_formation = parse_date(detail_soup.find('div', class_='col-xs-4 date-of-formation').get_text().strip().split('\n')[-1])
+        for div in detail_soup.find_all('div', class_='col-xs-6'):
+            if div.find(text=re.compile('Completed Projects Per Year')):
+                complete_all = int(div.find_all('div')[-1].get_text().strip())
+            elif div.find(text=re.compile('Completed Projects')):
+                num_complete = int(div.find_all('div')[-1].get_text().strip())
+            elif div.find(text=re.compile('On Time')):
+                repayment = div.find_all('div')[-1].get_text().strip()
+
         return {'company' : company, 
                 'borrower' : borrower, 
                 'rate' : rate,
@@ -83,7 +94,10 @@ class GoundFloor():
                 'investers' : investers,
                 'total_amount' : total_amount,
                 'zipcode' : zipcode,
-                'state' : state
+                'state' : state,
+                'num_complete' : num_complete,
+                'complete_all' : complete_all,
+                'repayment' : repayment
                 }
  
 
@@ -191,16 +205,20 @@ class GoundFloor():
     def supply_info(self):
         for loan in self.invest_loans:
             borrower_past = self.data[self.data.borrower == loan['borrower']]
-            if borrower_past.empty:
-                loan['borrower_past'] = ''
-            else:
-                loan['borrower_past'] = borrower_past.groupby(['status']).size().to_string().replace('status\n', '').replace('    ', ' ').replace('\n', " | ")
+            loan_borrower_past = {'Funded':0, 'Repaid':0, 'Late':0}
+            loan_borrower_past.update(borrower_past.groupby(['status']).size().to_dict())
+            loan['borrower(f:r:l)'] = "%2d :%2d :%2d" % (loan_borrower_past['Funded'], loan_borrower_past['Repaid'], loan_borrower_past['Late'])
+
 
             location_past = self.data[self.data.state == loan['state']]
-            if location_past.empty:
-                loan['location_past'] = ''
-            else:
-                loan['location_past'] = location_past.groupby(['status']).size().to_string().replace('status\n', '').replace('    ', ' ').replace('\n', " | ")
+            loan_location_past = {'Funded':0, 'Repaid':0, 'Late':0}
+            loan_location_past.update(location_past.groupby(['status']).size().to_dict())
+            loan['location(f:r:l)'] = "%2d :%2d :%2d" % (loan_location_past['Funded'], loan_location_past['Repaid'], loan_location_past['Late'])
 
         invest_data = pd.DataFrame(self.invest_loans)
-        print(invest_data[['title', 'borrower', 'state', 'borrower_past', 'location_past']])
+
+        pd.set_option('display.max_columns', 10)
+        pd.set_option('display.width', 140)
+        print(invest_data[['title', 'borrower', 'state', 'borrower(f:r:l)', 'location(f:r:l)', 'num_complete', 'complete_all', 'repayment']])
+
+        invest_data.to_csv('invest.csv')
