@@ -11,13 +11,88 @@ BASE_URL = 'https://www.groundfloor.us'
 
 class GoundFloor():
     def __init__(self, link):
-        self.soup = BeautifulSoup(urlopen(link).read(), "lxml")
+        self.soup = BeautifulSoup(urlopen(link).read(), 'lxml')
+        self.data = None
+
+
+    def save(self, filename):
+        if self.data is not None:
+            self.data.to_csv(filename)
+        else:
+            raise Exception('No data to save!')
     
+
+    def read(self, filename):
+        self.data = pd.read_csv(filename, index_col = 0)
+
+    
+    def crawl_funding(self):
+        items = self.soup.find_all("div", class_="long-text-wrapper")
+        loans = []
+        print("Crawling investment loans")
+        for item in items:
+            loan = {}
+            loan['title'] = item.find('a').get_text()
+            loan['link'] = item.find('a').attrs['href']
+            details = self.crawl_funding_details(BASE_URL + loan['link'])
+            loan.update(details)
+            loans.append(loan)
+        
+        print("%d of %d loan crawled" % (len(loans), len(items)))
+
+        self.invest_loans = loans
+
+
+    def crawl_funding_details(self, detail_link):
+        detail_soup = BeautifulSoup(urlopen(detail_link).read(), 'lxml')
+        divs = detail_soup.find_all('div', class_='col-xs-11 anchor-link')
+        company = divs[0].get_text().strip()
+        borrower = divs[1].get_text().replace(' - principal', '').strip()
+        black_boxes = detail_soup.find_all('div', class_='black-box')
+        rate = float(black_boxes[0].get_text().replace('%', '')) / 100
+        term = int(black_boxes[1].get_text().split()[0])
+        loan_to_value = float(black_boxes[2].get_text().replace('%', '')) / 100
+        remaining = black_boxes[3].get_text().split('/')
+        remaining_amount = parse_currency(remaining[0])
+        remaining_days = int(remaining[1].split()[0])
+        investers = int(black_boxes[4].get_text())
+        
+        white_boxes = detail_soup.find_all('div', class_='white-box')
+        purpose = white_boxes[0].get_text().strip()
+        position = white_boxes[1].get_text()
+        total_amount = parse_currency(white_boxes[2].get_text())
+        
+        address = detail_soup.find(id = 'cucumber-investment').find('a').get_text()
+        address_array = address.split()
+        if len(address_array) > 2:
+            zipcode = int(address_array[-1])
+            state = address_array[-2]
+        else:
+            zipcode = 'NA'
+            state = address_array[-1]
+
+        return {'company' : company, 
+                'borrower' : borrower, 
+                'rate' : rate,
+                'term' : term,
+                'loan_to_value' : loan_to_value,
+                'remaining_amount' : remaining_amount, 
+                'remaining_days' : remaining_days,
+                'purpose' : purpose,
+                'position' : position, 
+                'investers' : investers,
+                'total_amount' : total_amount,
+                'zipcode' : zipcode,
+                'state' : state
+                }
+ 
+
     def crawl(self):
         cards = self.soup.find_all("div", class_="card")
 
         loans = []
         count_err = 0
+        print("Crawling loans")
         for card in cards:
             loan = {}
             loan['title'] = card.find('div', class_="title").get_text()
@@ -45,32 +120,34 @@ class GoundFloor():
     
 
     def crawl_details(self, detail_link):
-        detail_soup = BeautifulSoup(urlopen(detail_link).read(), "lxml")
+        detail_soup = BeautifulSoup(urlopen(detail_link).read(), 'lxml')
+        divs = detail_soup.find_all('div', class_='col-xs-11 anchor-link')
+        company = divs[0].get_text().strip()
+        borrower = divs[1].get_text().replace(' - principal', '').strip()
+        black_boxes = detail_soup.find_all('div', class_='black-box')
+        rate = float(black_boxes[0].get_text().replace('%', '')) / 100
+        term = int(black_boxes[1].get_text().split()[0])
+        loan_to_value = float(black_boxes[2].get_text().replace('%', '')) / 100
+        amount = parse_currency(black_boxes[3].get_text())
+        investers = int(black_boxes[4].get_text())
         
-        company = detail_soup.find_all('div', class_='col-xs-11 anchor-link')[0].get_text().strip()
-        borrower = detail_soup.find_all('div', class_='col-xs-11 anchor-link')[1].get_text().replace(' - principal', '').strip()
-        
-        rate = float(detail_soup.find_all('div', class_='black-box')[0].get_text().replace('%', '')) / 100
-        term = int(detail_soup.find_all('div', class_='black-box')[1].get_text().split()[0])
-        loan_to_value = float(detail_soup.find_all('div', class_='black-box')[2].get_text().replace('%', '')) / 100
-        amount = parse_currency(detail_soup.find_all('div', class_='black-box')[3].get_text())
-        investers = int(detail_soup.find_all('div', class_='black-box')[4].get_text())
-        
-        purpose = detail_soup.find_all('div', class_='white-box')[0].get_text().strip()
-        position = detail_soup.find_all('div', class_='white-box')[1].get_text()
-        total_amount = parse_currency(detail_soup.find_all('div', class_='white-box')[2].get_text())
-       
+        white_boxes = detail_soup.find_all('div', class_='white-box')
+        purpose = white_boxes[0].get_text().strip()
+        position = white_boxes[1].get_text()
+        total_amount = parse_currency(white_boxes[2].get_text())
+
         try:
-            start_on = parse_date(detail_soup.find_all('div', class_='value-in-box col-xs-7')[0].get_text())
-            funded_on = parse_date(detail_soup.find_all('div', class_='value-in-box col-xs-7')[1].get_text())
-            repaid_on = parse_date(detail_soup.find_all('div', class_='value-in-box col-xs-7')[2].get_text())
-            matures_on = parse_date(detail_soup.find_all('div', class_='value-in-box col-xs-7')[3].get_text())
+            value_boxes = detail_soup.find_all('div', class_='value-in-box col-xs-7')
+            start_on = parse_date(value_boxes[0].get_text())
+            funded_on = parse_date(value_boxes[1].get_text())
+            repaid_on = parse_date(value_boxes[2].get_text())
+            matures_on = parse_date(value_boxes[3].get_text())
             parse_result = True
         except IndexError:
             print('dates for %s unavailable' % (detail_link))
             return {'parse_result' : False}
  
-        status_info = detail_soup.find_all('div', class_='white-box')[3].get_text().strip().split()
+        status_info = white_boxes[3].get_text().strip().split()
         status = status_info[0]
         if matures_on == 'NA':
             matures_on = start_on + dt.timedelta(30*term)
@@ -94,11 +171,9 @@ class GoundFloor():
                 'term' : term,
                 'loan_to_value' : loan_to_value,
                 'amount' : amount, 
-                'investers' : investers, 
                 'purpose' : purpose,
                 'position' : position, 
                 'investers' : investers,
-                'purpose' : purpose, 
                 'total_amount' : total_amount, 
                 'status' : status, 
                 'start_on' : start_on, 
@@ -112,3 +187,20 @@ class GoundFloor():
                 'parse_result': parse_result
                 }
 
+
+    def supply_info(self):
+        for loan in self.invest_loans:
+            borrower_past = self.data[self.data.borrower == loan['borrower']]
+            if borrower_past.empty:
+                loan['borrower_past'] = ''
+            else:
+                loan['borrower_past'] = borrower_past.groupby(['status']).size().to_string().replace('status\n', '').replace('    ', ' ').replace('\n', " | ")
+
+            location_past = self.data[self.data.state == loan['state']]
+            if location_past.empty:
+                loan['location_past'] = ''
+            else:
+                loan['location_past'] = location_past.groupby(['status']).size().to_string().replace('status\n', '').replace('    ', ' ').replace('\n', " | ")
+
+        invest_data = pd.DataFrame(self.invest_loans)
+        print(invest_data[['title', 'borrower', 'state', 'borrower_past', 'location_past']])
